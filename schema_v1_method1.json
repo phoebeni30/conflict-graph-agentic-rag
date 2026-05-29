@@ -1,0 +1,182 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "schema_v1_method1",
+  "version": "1.0.0",
+  "frozen_at": "2026-05-30",
+  "extends": "schema_v1.json",
+  "description": "Method 1 extension schema: Conflict-Aware Evidence Arbitration with Factoid-Level Resolution. Extends schema_v1.json với 3 schema mới (FactoidSlots, ConflictLocalization, LoopResult) và 2 extensions cho schema gốc (ClaimCanonicalMeta, CredibilityUpdate). FROZEN — mọi thay đổi phải tạo schema_v1_method1_v2.json + Decisions Log.",
+
+  "enums": {
+    "factoid_slot_types": ["temporal", "numerical", "entity_subject", "entity_object", "relation", "location"],
+    "loop_stop_reasons":  ["intensity_below_threshold", "max_iterations_reached", "no_new_evidence", "convergence"],
+    "claim_status":       ["validated", "suppressed", "pending"]
+  },
+
+  "id_formats": {
+    "localization_id": "l001, l002, ... (zero-padded 3 digits)",
+    "loop_id":         "loop001, loop002, ..."
+  },
+
+  "schemas": {
+
+    "FactoidSlots": {
+      "description": "Typed slots được extract từ một Claim theo Method 1 factoid decomposition schema. Dùng để so sánh claim-level conflict ở mức granularity cao hơn.",
+      "owner_module": "conflict/conflict_zone.py — FactoidDecomposer",
+      "consumed_by": ["conflict/conflict_zone.py — ConflictZoneAnalyzer"],
+      "extraction_strategy": {
+        "temporal":       "rule-based regex \\b(1[0-9]{3}|20[0-9]{2})\\b — deterministic, không dùng LLM",
+        "numerical":      "rule-based regex number pattern — deterministic, không dùng LLM",
+        "entity_subject": "LLM prompt extraction — cần ngữ nghĩa",
+        "entity_object":  "LLM prompt extraction — cần ngữ nghĩa",
+        "relation":       "LLM prompt extraction — cần ngữ nghĩa",
+        "location":       "LLM prompt extraction — cần ngữ nghĩa"
+      },
+      "fields": {
+        "claim_id":       { "type": "string",          "required": true,  "example": "c001",  "note": "FK → Claim.claim_id" },
+        "temporal":       { "type": ["string", null],  "required": true,  "example": "1954",  "note": "null nếu không có temporal value. Chỉ lấy năm đầu tiên tìm thấy." },
+        "numerical":      { "type": ["string", null],  "required": true,  "example": "56",    "note": "null nếu không có. Loại trừ các số đã capture bởi temporal." },
+        "entity_subject": { "type": ["string", null],  "required": true,  "example": "Chiến dịch Điện Biên Phủ", "note": "null nếu không extract được." },
+        "entity_object":  { "type": ["string", null],  "required": true,  "example": "Pháp", "note": "null nếu không extract được." },
+        "relation":       { "type": ["string", null],  "required": true,  "example": "diễn ra", "note": "null nếu không extract được." },
+        "location":       { "type": ["string", null],  "required": true,  "example": "Điện Biên Phủ", "note": "null nếu không extract được." }
+      },
+      "constraints": [
+        "Ít nhất 1 field non-null (nếu tất cả null → claim không có extractable factoids → skip)",
+        "temporal và numerical phải là string (không phải int/float) để preserve format gốc"
+      ]
+    },
+
+    "ConflictLocalization": {
+      "description": "Kết quả phân tích conflict ở mức factoid giữa một cặp claims mâu thuẫn. Output của Phase 5 Conflict Zone, input cho Phase 6 Iterative Loop query formulation.",
+      "owner_module": "conflict/conflict_zone.py — ConflictZoneAnalyzer._localize_conflict()",
+      "consumed_by": ["loop/iterative_loop.py — ConflictQueryFormulator"],
+      "fields": {
+        "localization_id":    { "type": "string", "required": true,  "example": "l001",       "note": "Format: l + zero-padded 3 digits" },
+        "query_id":           { "type": "string", "required": true,  "example": "q001",       "note": "FK → query" },
+        "claim_i_id":         { "type": "string", "required": true,  "example": "c001",       "note": "FK → Claim.claim_id. Claim có credibility cao hơn (validated side)" },
+        "claim_j_id":         { "type": "string", "required": true,  "example": "c003",       "note": "FK → Claim.claim_id. Claim bị suppress hoặc lower credibility" },
+        "primary_slot":       { "type": "string", "required": true,  "example": "temporal",   "note": "Enum: factoid_slot_types. Slot type bị conflict đầu tiên (highest priority)" },
+        "value_i":            { "type": "string", "required": true,  "example": "1954",       "note": "Giá trị từ claim_i cho primary_slot. KHÔNG null (pair đã confirmed conflict)" },
+        "value_j":            { "type": "string", "required": true,  "example": "1953",       "note": "Giá trị từ claim_j cho primary_slot. KHÔNG null" },
+        "conflict_intensity": { "type": "float",  "required": true,  "example": 0.33,         "note": "0.0–1.0. Công thức: |conflict_slots| / total_non_null_slots. 0.0 = no conflict, 1.0 = tất cả slots đều conflict" },
+        "credibility_i":      { "type": "float",  "required": true,  "example": 0.82,         "note": "claim_credibility_score của claim_i từ CredibilityArbitrator. Có thể âm." },
+        "credibility_j":      { "type": "float",  "required": true,  "example": -1.65,        "note": "claim_credibility_score của claim_j. Có thể âm." },
+        "all_conflict_slots": { "type": "list[string]", "required": true, "example": ["temporal"], "note": "Tất cả slot types bị conflict (không chỉ primary). Dùng để compute intensity." }
+      },
+      "constraints": [
+        "conflict_intensity = len(all_conflict_slots) / total_non_null_slots",
+        "primary_slot phải nằm trong all_conflict_slots",
+        "claim_i_id ≠ claim_j_id",
+        "value_i ≠ value_j (đây là điều kiện để tạo ConflictLocalization)",
+        "conflict_intensity > 0.0 (nếu = 0.0 thì không nên tạo object này)"
+      ],
+      "targeted_query_templates": {
+        "temporal":       "Verify: {original_query} Source A claims {value_i}, Source B claims {value_j}. [temporal conflict] Which year is correct?",
+        "numerical":      "Verify numerical: {original_query} One source: {value_i}, another: {value_j}. Find authoritative evidence.",
+        "entity_subject": "Disambiguate entity: {original_query} Conflicting entities: '{value_i}' vs '{value_j}'.",
+        "entity_object":  "Disambiguate entity: {original_query} Conflicting entities: '{value_i}' vs '{value_j}'.",
+        "location":       "Verify location: {original_query} Source A: {value_i}, Source B: {value_j}.",
+        "relation":       "Fact-check: {original_query} Conflicting claims about relationship: '{value_i}' vs '{value_j}'."
+      }
+    },
+
+    "LoopResult": {
+      "description": "Output tổng hợp của Phase 6 Iterative Retrieval Loop. Chứa validated claims, conflict localizations còn lại (nếu chưa resolve), và final answer sau Phase 7.",
+      "owner_module": "loop/iterative_loop.py — IterativeLoop.run()",
+      "consumed_by": ["answer/generator.py — AnswerGenerator", "evaluation/generation_eval.py"],
+      "fields": {
+        "loop_id":                { "type": "string",          "required": true,  "example": "loop001",  "note": "Format: loop + zero-padded 3 digits" },
+        "query_id":               { "type": "string",          "required": true,  "example": "q001",     "note": "FK → query" },
+        "iterations_run":         { "type": "int",             "required": true,  "example": 2,          "note": "0 = loop không chạy (conflict không detected). MAX = 3 (hardcoded ceiling)" },
+        "stop_reason":            { "type": "string",          "required": true,  "example": "intensity_below_threshold", "note": "Enum: loop_stop_reasons" },
+        "resolved":               { "type": "bool",            "required": true,  "example": true,       "note": "true nếu tất cả conflict_intensity < θ_intensity sau loop. false = genuine disagreement còn tồn tại." },
+        "validated_claim_ids":    { "type": "list[string]",    "required": true,  "example": ["c001", "c002"], "note": "claim_id của các claims có credibility_score > 0. Sorted by credibility descending." },
+        "suppressed_claim_ids":   { "type": "list[string]",    "required": true,  "example": ["c003"],   "note": "claim_id của các claims bị suppress (credibility_score ≤ 0)." },
+        "conflict_localizations": { "type": "list[string]",    "required": true,  "example": ["l001"],   "note": "localization_id của ConflictLocalization còn lại sau loop. [] nếu resolved=true." },
+        "final_answer":           { "type": ["string", null],  "required": true,  "example": "Chiến dịch Điện Biên Phủ kết thúc năm 1954...", "note": "null nếu chưa generate (Phase 7 chưa chạy)." },
+        "credibility_scores":     {
+          "type": "object", "required": true,
+          "example": {"c001": 1.76, "c003": -2.56},
+          "note": "Map claim_id → credibility_score từ lần arbitration cuối cùng. Có thể chứa âm."
+        }
+      },
+      "constraints": [
+        "iterations_run <= 3 (MAX_ITERATIONS hardcoded ceiling)",
+        "resolved=true → conflict_localizations = []",
+        "resolved=false → conflict_localizations không rỗng",
+        "validated_claim_ids ∩ suppressed_claim_ids = empty set",
+        "stop_reason phải nằm trong enum loop_stop_reasons"
+      ]
+    },
+
+    "ClaimCanonicalMeta": {
+      "description": "Metadata về kết quả claim canonical — theo dõi việc merge/tách claims. Dùng cho debugging và ablation study.",
+      "owner_module": "claims/embedder.py — ClaimCanonical",
+      "consumed_by": ["evaluation/claim_eval.py"],
+      "fields": {
+        "representative_claim_id": { "type": "string",       "required": true,  "example": "c001",          "note": "FK → Claim.claim_id. Claim được giữ lại làm representative" },
+        "merged_claim_ids":        { "type": "list[string]", "required": true,  "example": ["c004", "c005"], "note": "Các claim_id bị merge vào representative. [] nếu không có merge." },
+        "merge_reason":            { "type": "string",       "required": true,  "example": "high_similarity_same_temporal", "note": "Mô tả lý do merge: high_similarity_same_temporal | high_similarity_no_values | high_similarity_same_values" },
+        "similarity_score":        { "type": "float",        "required": true,  "example": 0.94,            "note": "Cosine similarity giữa representative và merged claims (max của nhóm)" }
+      }
+    },
+
+    "CredibilityUpdate": {
+      "description": "Log mỗi lần update credibility score trong iterative arbitration. Dùng cho transparency và debugging.",
+      "owner_module": "conflict/conflict_zone.py — CredibilityArbitrator",
+      "consumed_by": ["evaluation/conflict_eval.py"],
+      "fields": {
+        "claim_id":         { "type": "string", "required": true, "example": "c001",  "note": "FK → Claim.claim_id" },
+        "query_id":         { "type": "string", "required": true, "example": "q001",  "note": "FK → query" },
+        "iteration":        { "type": "int",    "required": true, "example": 1,       "note": "Iteration index, bắt đầu từ 1" },
+        "score_before":     { "type": "float",  "required": true, "example": 0.0,     "note": "Credibility score trước update" },
+        "score_after":      { "type": "float",  "required": true, "example": 0.82,    "note": "Credibility score sau update" },
+        "support_sum":      { "type": "float",  "required": true, "example": 1.71,    "note": "Σ edge_score của support edges vào claim này" },
+        "contradict_sum":   { "type": "float",  "required": true, "example": 0.89,    "note": "Σ edge_score của contradiction edges vào claim này" }
+      }
+    }
+
+  },
+
+  "foreign_keys": {
+    "FactoidSlots.claim_id":              "→ Claim.claim_id (schema_v1.json)",
+    "ConflictLocalization.query_id":      "→ query (external)",
+    "ConflictLocalization.claim_i_id":    "→ Claim.claim_id (schema_v1.json)",
+    "ConflictLocalization.claim_j_id":    "→ Claim.claim_id (schema_v1.json)",
+    "LoopResult.query_id":                "→ query (external)",
+    "LoopResult.validated_claim_ids[]":   "→ Claim.claim_id (schema_v1.json)",
+    "LoopResult.suppressed_claim_ids[]":  "→ Claim.claim_id (schema_v1.json)",
+    "LoopResult.conflict_localizations[]":"→ ConflictLocalization.localization_id",
+    "ClaimCanonicalMeta.representative_claim_id": "→ Claim.claim_id (schema_v1.json)",
+    "ClaimCanonicalMeta.merged_claim_ids[]":      "→ Claim.claim_id (schema_v1.json)",
+    "CredibilityUpdate.claim_id":         "→ Claim.claim_id (schema_v1.json)"
+  },
+
+  "data_flow": {
+    "step_1": "Claim[] → (claims/embedder.py — ClaimCanonical) → representative Claim[] + ClaimCanonicalMeta[]",
+    "step_2": "Claim[] (top-k) + nx.DiGraph → (conflict/conflict_zone.py — FactoidDecomposer) → FactoidSlots[] per conflict pair",
+    "step_3": "FactoidSlots[] pairs → (conflict/conflict_zone.py — ConflictZoneAnalyzer) → ConflictLocalization[] + CredibilityUpdate[]",
+    "step_4": "ConflictLocalization[] → (loop/iterative_loop.py — ConflictQueryFormulator) → targeted_query strings",
+    "step_5": "targeted_query strings → retrieve → update graph → re-run steps 2-4",
+    "step_6": "final ConflictLocalization[] + validated Claim[] → (loop/iterative_loop.py) → LoopResult",
+    "step_7": "LoopResult → (answer/generator.py) → LoopResult.final_answer populated"
+  },
+
+  "asqa_integration_notes": {
+    "dataset": "ASQA (Stelmakh et al., 2022)",
+    "conflict_type": "entity ambiguity — cùng tên nhưng khác entity (e.g., 'Sound of Silence' → Dami Im vs Simon & Garfunkel)",
+    "primary_slot_expected": "entity_subject hoặc entity_object — ASQA conflict chủ yếu ở entity level, không phải temporal",
+    "document_source": "Wikipedia multi-source — mỗi query có nhiều docs từ các entity khác nhau",
+    "claim_canonical_behavior": "Ít merge hơn vì các claims thường refer đến các entity khác nhau — similarity cao nhưng entity khác",
+    "intensity_range_expected": "0.2–0.5 — thường conflict ở 1-2 slots (entity), không phải toàn bộ schema",
+    "ground_truth_format": "ASQA có qa_pairs với short_answers per disambiguated question → dùng để verify ConflictLocalization"
+  },
+
+  "serialization_rules": {
+    "format":        "JSONL — mỗi record một dòng, kết thúc bằng newline",
+    "encoding":      "UTF-8",
+    "null_policy":   "null cho giá trị thiếu. KHÔNG dùng empty string. credibility_scores map có thể chứa giá trị âm.",
+    "float_precision": "credibility_score và conflict_intensity: 4 decimal places khi serialize",
+    "validate_cmd":  "python -c \"import json; [json.loads(l) for l in open('file.jsonl')]\""
+  }
+}
