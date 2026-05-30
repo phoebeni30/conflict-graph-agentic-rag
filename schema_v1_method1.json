@@ -4,108 +4,299 @@
   "version": "1.0.0",
   "frozen_at": "2026-05-30",
   "description": "Full merged schema cho pipeline Conflict-Aware Evidence Arbitration with Factoid-Level Resolution. Nguồn: schema_v1_method1.json + RESE006 Method PDF. Loại bỏ ConflictRegion/state classification vốn không thuộc method này.",
-
   "pipeline_overview": {
     "paradigm": "arbitrate-then-verify-then-generate",
     "data_flow": "Documents → Claim Extraction → Claim Canonical → Evidence Graph → Query-Aware Retrieval → Conflict Zone → Iterative Loop → Generation",
     "phases": {
-      "phase_1": { "name": "Claim Extraction",      "input": "Documents",                                        "output": "Claim[] + embeddings" },
-      "phase_2": { "name": "Claim Canonical",        "input": "Claim[]",                                         "output": "representative Claim[]" },
-      "phase_3": { "name": "Evidence Graph",         "input": "representative Claim[]",                          "output": "G = (V, E) với ClaimEdge[] + edge scores" },
-      "phase_4": { "name": "Query-Aware Retrieval",  "input": "Query + ClaimEdge[]",                             "output": "top-k Claim[] (balanced edge types)" },
-      "phase_5": { "name": "Conflict Zone",          "input": "top-k Claim[] with contradict edges",             "output": "credibility_score per Claim + ConflictLocalization[]" },
-      "phase_6": { "name": "Iterative Loop",         "input": "ConflictLocalization[]",                          "output": "LoopResult (updated graph + validated/suppressed claims)" },
-      "phase_7": { "name": "Generation",             "input": "validated Claim[] + conflict_summary if unresolved", "output": "FinalAnswer" }
+      "phase_1": {
+        "name": "Claim Extraction",
+        "input": "Documents",
+        "output": "Claim[] + embeddings"
+      },
+      "phase_2": {
+        "name": "Claim Canonical",
+        "input": "Claim[]",
+        "output": "representative Claim[]"
+      },
+      "phase_3": {
+        "name": "Evidence Graph",
+        "input": "representative Claim[]",
+        "output": "G = (V, E) với ClaimEdge[] + edge scores"
+      },
+      "phase_4": {
+        "name": "Query-Aware Retrieval",
+        "input": "Query + ClaimEdge[]",
+        "output": "top-k Claim[] (balanced edge types)"
+      },
+      "phase_5": {
+        "name": "Conflict Zone",
+        "input": "top-k Claim[] with contradict edges",
+        "output": "credibility_score per Claim + ConflictLocalization[]"
+      },
+      "phase_6": {
+        "name": "Iterative Loop",
+        "input": "ConflictLocalization[]",
+        "output": "LoopResult (updated graph + validated/suppressed claims)"
+      },
+      "phase_7": {
+        "name": "Generation",
+        "input": "validated Claim[] + conflict_summary if unresolved",
+        "output": "FinalAnswer"
+      }
     }
   },
-
   "enums": {
-    "relation_types":     ["support", "contradict", "neutral"],
-    "factoid_slot_types": ["temporal", "numerical", "entity_subject", "entity_object", "relation", "location"],
-    "loop_stop_reasons":  ["intensity_below_threshold", "max_iterations_reached", "no_new_evidence", "convergence"]
+    "relation_types": [
+      "support",
+      "contradict",
+      "neutral"
+    ],
+    "factoid_slot_types": [
+      "temporal",
+      "numerical",
+      "entity_subject",
+      "entity_object",
+      "relation",
+      "location"
+    ],
+    "loop_stop_reasons": [
+      "intensity_below_threshold",
+      "max_iterations_reached",
+      "no_new_evidence",
+      "convergence"
+    ]
   },
-
   "id_formats": {
-    "query_id":        "q_001, q_002, ...",
-    "doc_id":          "d_001, d_002, ...",
-    "source_id":       "s_001, s_002, ...",
-    "claim_id":        "c_001, c_002, ...",
-    "edge_id":         "e_001, e_002, ...",
+    "query_id": "q_001, q_002, ...",
+    "doc_id": "d_001, d_002, ...",
+    "source_id": "s_001, s_002, ...",
+    "claim_id": "c_001, c_002, ...",
+    "edge_id": "e_001, e_002, ...",
     "localization_id": "l001, l002, ... (l + zero-padded 3 digits)",
-    "loop_id":         "loop001, loop002, ... (loop + zero-padded 3 digits)"
+    "loop_id": "loop001, loop002, ... (loop + zero-padded 3 digits)"
   },
-
   "schemas": {
-
     "Query": {
       "description": "Input query từ user. Entry point của pipeline.",
       "owner_module": "retrieval/retrieval.py",
       "fields": {
-        "query_id":   { "type": "string", "required": true, "example": "q_001" },
-        "user_query": { "type": "string", "required": true, "example": "Chiến dịch Điện Biên Phủ kết thúc năm nào?" }
+        "query_id": {
+          "type": "string",
+          "required": true,
+          "example": "q_001"
+        },
+        "user_query": {
+          "type": "string",
+          "required": true,
+          "example": "Chiến dịch Điện Biên Phủ kết thúc năm nào?"
+        }
       }
     },
-
     "Document": {
       "description": "Document được retrieve từ corpus hoặc live search. Input cho Phase 1 Claim Extraction.",
       "owner_module": "retrieval/retrieval.py",
-      "consumed_by": ["extraction/claim_extractor.py"],
+      "consumed_by": [
+        "extraction/claim_extractor.py"
+      ],
       "fields": {
-        "doc_id":          { "type": "string",         "required": true,  "example": "d_001" },
-        "source_id":       { "type": "string",         "required": true,  "example": "s_001",   "note": "Định danh nguồn. Propagated xuống Claim để track source diversity." },
-        "text":            { "type": "string",         "required": true,  "example": "Chiến dịch Điện Biên Phủ diễn ra từ tháng 3 đến tháng 5 năm 1954..." },
-        "retrieval_score": { "type": "float",          "required": true,  "example": 0.91,      "note": "Score từ hybrid retrieval. Range [0, 1]." },
+        "doc_id": {
+          "type": "string",
+          "required": true,
+          "example": "d_001"
+        },
+        "source_id": {
+          "type": "string",
+          "required": true,
+          "example": "s_001",
+          "note": "Định danh nguồn. Propagated xuống Claim để track source diversity."
+        },
+        "text": {
+          "type": "string",
+          "required": true,
+          "example": "Chiến dịch Điện Biên Phủ diễn ra từ tháng 3 đến tháng 5 năm 1954..."
+        },
+        "retrieval_score": {
+          "type": "float",
+          "required": true,
+          "example": 0.91,
+          "note": "Score từ hybrid retrieval. Range [0, 1]."
+        },
         "metadata": {
-          "type": "object", "required": false,
+          "type": "object",
+          "required": false,
           "fields": {
-            "url":            { "type": ["string", null], "example": "https://example.com/article" },
-            "published_date": { "type": ["string", null], "example": "2023-03-15", "note": "ISO 8601." }
+            "url": {
+              "type": [
+                "string",
+                null
+              ],
+              "example": "https://example.com/article"
+            },
+            "published_date": {
+              "type": [
+                "string",
+                null
+              ],
+              "example": "2023-03-15",
+              "note": "ISO 8601."
+            }
           }
         }
       }
     },
-
     "Claim": {
-      "description": "Atomic declarative statement được extract từ một Document bởi LLM (Phase 1). Encode bằng BGE-M3. Sau Phase 2 canonical, mỗi Claim có thể là representative cho một nhóm claims tương đồng. credibility_score được compute tại Phase 5 (null trước đó).",
+      "description": "Output của Phase 1 Claim Extraction. LLM nhận Document.text, trích ra evidence (span gốc từ document) rồi viết lại thành claim_text (atomic declarative statement đã được normalize). evidence là traceability anchor — luôn là substring/paraphrase sát của Document.text. claim_text là gì LLM hiểu và rewrite. Sau Phase 2 canonical, Claim có thể là representative cho nhiều claims tương đồng. credibility_score được compute tại Phase 5 (null trước đó).",
       "owner_module": "extraction/claim_extractor.py",
       "consumed_by": [
         "graph/evidence_graph.py",
         "conflict/conflict_zone.py — FactoidDecomposer"
       ],
       "fields": {
-        "claim_id":            { "type": "string",         "required": true,  "example": "c_001" },
-        "claim_text":          { "type": "string",         "required": true,  "example": "Chiến dịch Điện Biên Phủ diễn ra năm 1954." },
-        "doc_id":              { "type": "string",         "required": true,  "example": "d_001",              "note": "FK → Document.doc_id" },
-        "source_id":           { "type": "string",         "required": true,  "example": "s_001",              "note": "FK → Document.source_id. Propagated từ document." },
-        "claim_embedding":     { "type": ["array", null],  "required": false, "example": [0.12, -0.08, 0.33],  "note": "Dense vector từ BGE-M3. Dùng để tính cosine similarity trong Phase 2." },
-        "retrieval_relevance": { "type": "float",          "required": true,  "example": 0.91,                 "note": "Relevance score với query từ hybrid retrieval (α*dense + (1-α)*sparse sau RRF)." },
-        "claim_confidence":    { "type": "float",          "required": true,  "example": 0.84,                 "note": "Confidence của LLM extraction. Range [0, 1]." },
-        "credibility_score":   { "type": ["float", null],  "required": false, "example": 1.76,                 "note": "null trước Phase 5. Computed: Σ edge_score[support] − Σ edge_score[contradict]. Có thể âm." },
-        "is_representative":   { "type": "bool",           "required": false, "default": true,                 "note": "true nếu đây là representative claim sau Phase 2 canonical." },
-        "merged_claim_ids":    { "type": ["array", null],  "required": false, "example": ["c_001", "c_009"],   "note": "Các claim_id đã merge vào representative này trong Phase 2. null nếu không merge." }
+        "claim_id": {
+          "type": "string",
+          "required": true,
+          "example": "c_001"
+        },
+        "claim_text": {
+          "type": "string",
+          "required": true,
+          "example": "Chiến dịch Điện Biên Phủ diễn ra năm 1954.",
+          "note": "Atomic declarative statement do LLM viết lại từ evidence. Clean về ngôn ngữ, normalized, không có filler. Khác evidence ở chỗ: LLM có thể rút gọn, đổi ngữ pháp, bỏ thông tin phụ — nhưng KHÔNG được thêm thông tin không có trong evidence."
+        },
+        "evidence": {
+          "type": "string",
+          "required": true,
+          "example": "Chiến dịch Điện Biên Phủ, diễn ra từ tháng 3 đến tháng 5 năm 1954, đã kết thúc với chiến thắng quyết định của Quân đội Nhân dân Việt Nam.",
+          "note": "Raw text span được LLM trích thẳng từ Document.text — không được paraphrase, phải là substring hoặc bản trích gốc. Dùng để traceability: verify claim_text không hallucinate so với nguồn. FK ngầm: evidence phải xuất hiện trong Document[doc_id].text."
+        },
+        "doc_id": {
+          "type": "string",
+          "required": true,
+          "example": "d_001",
+          "note": "FK → Document.doc_id"
+        },
+        "source_id": {
+          "type": "string",
+          "required": true,
+          "example": "s_001",
+          "note": "FK → Document.source_id. Propagated từ document."
+        },
+        "claim_embedding": {
+          "type": [
+            "array",
+            null
+          ],
+          "required": false,
+          "example": [
+            0.12,
+            -0.08,
+            0.33
+          ],
+          "note": "Dense vector từ BGE-M3. Dùng để tính cosine similarity trong Phase 2."
+        },
+        "retrieval_relevance": {
+          "type": "float",
+          "required": true,
+          "example": 0.91,
+          "note": "Relevance score với query từ hybrid retrieval (α*dense + (1-α)*sparse sau RRF)."
+        },
+        "claim_confidence": {
+          "type": "float",
+          "required": true,
+          "example": 0.84,
+          "note": "Confidence của LLM extraction. Range [0, 1]."
+        },
+        "credibility_score": {
+          "type": [
+            "float",
+            null
+          ],
+          "required": false,
+          "example": 1.76,
+          "note": "null trước Phase 5. Computed: Σ edge_score[support] − Σ edge_score[contradict]. Có thể âm."
+        },
+        "is_representative": {
+          "type": "bool",
+          "required": false,
+          "default": true,
+          "note": "true nếu đây là representative claim sau Phase 2 canonical."
+        },
+        "merged_claim_ids": {
+          "type": [
+            "array",
+            null
+          ],
+          "required": false,
+          "example": [
+            "c_001",
+            "c_009"
+          ],
+          "note": "Các claim_id đã merge vào representative này trong Phase 2. null nếu không merge."
+        }
       },
       "constraints": [
         "claim_id phải unique toàn pipeline",
         "credibility_score có thể âm — không clamp",
+        "evidence phải là substring hoặc trích gốc từ Document[doc_id].text — không hallucinate",
+        "claim_text phải bảo toàn semantic của evidence — LLM chỉ được rewrite, không thêm fact",
         "Phase 2 split rule: dù cosine similarity cao, nếu temporal/numerical value khác nhau thì KHÔNG merge"
       ],
       "phase_2_canonical_logic": {
         "step_1": "cosine_similarity(embedding_i, embedding_j) > θ → candidate to merge",
         "step_2": "Nếu temporal hoặc numerical value khác nhau → NOT merge, giữ làm node riêng (nguồn gốc conflict)"
+      },
+      "llm_extraction_contract": {
+        "input": "Document.text",
+        "step_1": "LLM identify và trích evidence spans — các câu/cụm câu mang thông tin factual",
+        "step_2": "LLM rewrite mỗi evidence span → claim_text dạng atomic declarative statement",
+        "output": "List of {evidence, claim_text} pairs",
+        "invariant": "claim_text phải entail được từ evidence. Nếu NLI(evidence → claim_text) < threshold → drop claim"
       }
     },
-
     "ClaimEdge": {
       "description": "Quan hệ giữa hai Claim nodes trong Evidence Graph (Phase 3). LLM label + NLI quality check. Edge score = NLI confidence, dùng trực tiếp trong arbitration formula tại Phase 5.",
       "owner_module": "graph/evidence_graph.py",
-      "consumed_by": ["conflict/conflict_zone.py — ArbitrationEngine"],
+      "consumed_by": [
+        "conflict/conflict_zone.py — ArbitrationEngine"
+      ],
       "fields": {
-        "edge_id":           { "type": "string", "required": true,  "example": "e_001" },
-        "source_claim_id":   { "type": "string", "required": true,  "example": "c_001", "note": "FK → Claim.claim_id" },
-        "target_claim_id":   { "type": "string", "required": true,  "example": "c_003", "note": "FK → Claim.claim_id" },
-        "relation_type":     { "type": "string", "required": true,  "example": "contradict", "note": "Enum: relation_types. LLM label, confirmed bởi NLI." },
-        "edge_score":        { "type": "float",  "required": true,  "example": 0.89,    "note": "NLI confidence score cho relation_type. Range [0, 1]. Dùng trong arbitration." },
-        "nli_model":         { "type": ["string", null], "required": false, "example": "deberta-v3-large-mnli" }
+        "edge_id": {
+          "type": "string",
+          "required": true,
+          "example": "e_001"
+        },
+        "source_claim_id": {
+          "type": "string",
+          "required": true,
+          "example": "c_001",
+          "note": "FK → Claim.claim_id"
+        },
+        "target_claim_id": {
+          "type": "string",
+          "required": true,
+          "example": "c_003",
+          "note": "FK → Claim.claim_id"
+        },
+        "relation_type": {
+          "type": "string",
+          "required": true,
+          "example": "contradict",
+          "note": "Enum: relation_types. LLM label, confirmed bởi NLI."
+        },
+        "edge_score": {
+          "type": "float",
+          "required": true,
+          "example": 0.89,
+          "note": "NLI confidence score cho relation_type. Range [0, 1]. Dùng trong arbitration."
+        },
+        "nli_model": {
+          "type": [
+            "string",
+            null
+          ],
+          "required": false,
+          "example": "deberta-v3-large-mnli"
+        }
       },
       "constraints": [
         "source_claim_id ≠ target_claim_id",
@@ -115,50 +306,158 @@
       ],
       "arbitration_formula": "credibility_score(ri) = Σ edge_score(rj→ri)[support] − Σ edge_score(rk→ri)[contradict]"
     },
-
     "FactoidSlots": {
       "description": "Typed slots được extract từ một Claim. Dùng để so sánh claims ở mức sub-sentence trong Phase 5.2. Mỗi Claim cho ra đúng 1 FactoidSlots object. Tạo on-the-fly, không persist trừ debug mode.",
       "owner_module": "conflict/conflict_zone.py — FactoidDecomposer",
-      "consumed_by": ["conflict/conflict_zone.py — ConflictZoneAnalyzer._localize_conflict()"],
+      "consumed_by": [
+        "conflict/conflict_zone.py — ConflictZoneAnalyzer._localize_conflict()"
+      ],
       "extraction_strategy": {
-        "temporal":       "regex \\b(1[0-9]{3}|20[0-9]{2})\\b — deterministic",
-        "numerical":      "regex number pattern — deterministic, loại trừ tokens đã capture bởi temporal",
+        "temporal": "regex \\b(1[0-9]{3}|20[0-9]{2})\\b — deterministic",
+        "numerical": "regex number pattern — deterministic, loại trừ tokens đã capture bởi temporal",
         "entity_subject": "LLM prompt",
-        "entity_object":  "LLM prompt",
-        "relation":       "LLM prompt",
-        "location":       "LLM prompt"
+        "entity_object": "LLM prompt",
+        "relation": "LLM prompt",
+        "location": "LLM prompt"
       },
       "fields": {
-        "claim_id":       { "type": "string",         "required": true, "example": "c_001",                   "note": "FK → Claim.claim_id" },
-        "temporal":       { "type": ["string", null], "required": true, "example": "1954",                    "note": "String, không phải int." },
-        "numerical":      { "type": ["string", null], "required": true, "example": "56",                      "note": "String. Không bao gồm giá trị đã capture bởi temporal." },
-        "entity_subject": { "type": ["string", null], "required": true, "example": "Chiến dịch Điện Biên Phủ" },
-        "entity_object":  { "type": ["string", null], "required": true, "example": "Pháp" },
-        "relation":       { "type": ["string", null], "required": true, "example": "diễn ra" },
-        "location":       { "type": ["string", null], "required": true, "example": "Điện Biên Phủ" }
+        "claim_id": {
+          "type": "string",
+          "required": true,
+          "example": "c_001",
+          "note": "FK → Claim.claim_id"
+        },
+        "temporal": {
+          "type": [
+            "string",
+            null
+          ],
+          "required": true,
+          "example": "1954",
+          "note": "String, không phải int."
+        },
+        "numerical": {
+          "type": [
+            "string",
+            null
+          ],
+          "required": true,
+          "example": "56",
+          "note": "String. Không bao gồm giá trị đã capture bởi temporal."
+        },
+        "entity_subject": {
+          "type": [
+            "string",
+            null
+          ],
+          "required": true,
+          "example": "Chiến dịch Điện Biên Phủ"
+        },
+        "entity_object": {
+          "type": [
+            "string",
+            null
+          ],
+          "required": true,
+          "example": "Pháp"
+        },
+        "relation": {
+          "type": [
+            "string",
+            null
+          ],
+          "required": true,
+          "example": "diễn ra"
+        },
+        "location": {
+          "type": [
+            "string",
+            null
+          ],
+          "required": true,
+          "example": "Điện Biên Phủ"
+        }
       },
       "constraints": [
         "Ít nhất 1 field non-null — nếu tất cả null thì skip localization cho claim này",
         "temporal và numerical phải là string, không phải int/float"
       ]
     },
-
     "ConflictLocalization": {
       "description": "Kết quả phân tích factoid-level conflict giữa một cặp Claims có contradict edge (Phase 5.2). Xác định slot nào conflict, tính conflict_intensity, lưu credibility của cả hai phía. Dùng bởi Phase 6 để formulate conflict-aware queries.",
       "owner_module": "conflict/conflict_zone.py — ConflictZoneAnalyzer",
-      "consumed_by": ["loop/iterative_loop.py"],
+      "consumed_by": [
+        "loop/iterative_loop.py"
+      ],
       "fields": {
-        "localization_id":    { "type": "string",       "required": true,  "example": "l001",         "note": "l + zero-padded 3 digits" },
-        "query_id":           { "type": "string",       "required": true,  "example": "q_001",        "note": "FK → Query.query_id" },
-        "claim_i_id":         { "type": "string",       "required": true,  "example": "c_001",        "note": "FK → Claim.claim_id. Validated side (credibility_score cao hơn)." },
-        "claim_j_id":         { "type": "string",       "required": true,  "example": "c_003",        "note": "FK → Claim.claim_id. Suppressed side (credibility_score thấp hơn)." },
-        "primary_slot":       { "type": "string",       "required": true,  "example": "temporal",     "note": "Enum: factoid_slot_types. Slot conflict chính — highest priority." },
-        "value_i":            { "type": "string",       "required": true,  "example": "1954",         "note": "Giá trị primary_slot của claim_i. Không null." },
-        "value_j":            { "type": "string",       "required": true,  "example": "1953",         "note": "Giá trị primary_slot của claim_j. Không null, khác value_i." },
-        "conflict_intensity": { "type": "float",        "required": true,  "example": 0.33,           "note": "= |conflict_slots| / total_non_null_slots. Range (0.0, 1.0]." },
-        "credibility_i":      { "type": "float",        "required": true,  "example": 0.82,           "note": "credibility_score của claim_i tại thời điểm localize. Có thể âm." },
-        "credibility_j":      { "type": "float",        "required": true,  "example": -1.65,          "note": "credibility_score của claim_j. Có thể âm." },
-        "all_conflict_slots": { "type": "list[string]", "required": true,  "example": ["temporal"],   "note": "Tất cả slots bị conflict (không chỉ primary). Dùng để tính conflict_intensity." }
+        "localization_id": {
+          "type": "string",
+          "required": true,
+          "example": "l001",
+          "note": "l + zero-padded 3 digits"
+        },
+        "query_id": {
+          "type": "string",
+          "required": true,
+          "example": "q_001",
+          "note": "FK → Query.query_id"
+        },
+        "claim_i_id": {
+          "type": "string",
+          "required": true,
+          "example": "c_001",
+          "note": "FK → Claim.claim_id. Validated side (credibility_score cao hơn)."
+        },
+        "claim_j_id": {
+          "type": "string",
+          "required": true,
+          "example": "c_003",
+          "note": "FK → Claim.claim_id. Suppressed side (credibility_score thấp hơn)."
+        },
+        "primary_slot": {
+          "type": "string",
+          "required": true,
+          "example": "temporal",
+          "note": "Enum: factoid_slot_types. Slot conflict chính — highest priority."
+        },
+        "value_i": {
+          "type": "string",
+          "required": true,
+          "example": "1954",
+          "note": "Giá trị primary_slot của claim_i. Không null."
+        },
+        "value_j": {
+          "type": "string",
+          "required": true,
+          "example": "1953",
+          "note": "Giá trị primary_slot của claim_j. Không null, khác value_i."
+        },
+        "conflict_intensity": {
+          "type": "float",
+          "required": true,
+          "example": 0.33,
+          "note": "= |conflict_slots| / total_non_null_slots. Range (0.0, 1.0]."
+        },
+        "credibility_i": {
+          "type": "float",
+          "required": true,
+          "example": 0.82,
+          "note": "credibility_score của claim_i tại thời điểm localize. Có thể âm."
+        },
+        "credibility_j": {
+          "type": "float",
+          "required": true,
+          "example": -1.65,
+          "note": "credibility_score của claim_j. Có thể âm."
+        },
+        "all_conflict_slots": {
+          "type": "list[string]",
+          "required": true,
+          "example": [
+            "temporal"
+          ],
+          "note": "Tất cả slots bị conflict (không chỉ primary). Dùng để tính conflict_intensity."
+        }
       },
       "constraints": [
         "claim_i_id ≠ claim_j_id",
@@ -169,30 +468,91 @@
       ],
       "conflict_intensity_formula": "|conflict_slots| / total_non_null_slots (ví dụ: 1 slot conflict / 3 non-null slots = 0.33)",
       "conflict_aware_query_templates": {
-        "temporal":       "Verify: {original_query} Source A: {value_i}, Source B: {value_j}. [temporal conflict] Which is correct?",
-        "numerical":      "Verify numerical: {original_query} One source: {value_i}, another: {value_j}.",
+        "temporal": "Verify: {original_query} Source A: {value_i}, Source B: {value_j}. [temporal conflict] Which is correct?",
+        "numerical": "Verify numerical: {original_query} One source: {value_i}, another: {value_j}.",
         "entity_subject": "Disambiguate: {original_query} Conflicting entities: '{value_i}' vs '{value_j}'.",
-        "entity_object":  "Disambiguate: {original_query} Conflicting entities: '{value_i}' vs '{value_j}'.",
-        "location":       "Verify location: {original_query} Source A: {value_i}, Source B: {value_j}.",
-        "relation":       "Fact-check: {original_query} Conflicting claims: '{value_i}' vs '{value_j}'."
+        "entity_object": "Disambiguate: {original_query} Conflicting entities: '{value_i}' vs '{value_j}'.",
+        "location": "Verify location: {original_query} Source A: {value_i}, Source B: {value_j}.",
+        "relation": "Fact-check: {original_query} Conflicting claims: '{value_i}' vs '{value_j}'."
       }
     },
-
     "LoopResult": {
       "description": "Output tổng hợp của Phase 6 Iterative Retrieval Loop. Loop trigger khi có ConflictLocalization[] chưa resolve. Mỗi iteration: formulate conflict-aware query → retrieve → update graph → re-run arbitration → re-compute intensity. Break khi intensity < θ, max_iter, hoặc no new evidence.",
       "owner_module": "loop/iterative_loop.py",
-      "consumed_by": ["answer/generator.py"],
+      "consumed_by": [
+        "answer/generator.py"
+      ],
       "fields": {
-        "loop_id":                { "type": "string",         "required": true,  "example": "loop001" },
-        "query_id":               { "type": "string",         "required": true,  "example": "q_001",                     "note": "FK → Query.query_id" },
-        "iterations_run":         { "type": "int",            "required": true,  "example": 2,                           "note": "Range [0, 3]. MAX_ITER = 3 hardcoded." },
-        "stop_reason":            { "type": "string",         "required": true,  "example": "intensity_below_threshold", "note": "Enum: loop_stop_reasons" },
-        "resolved":               { "type": "bool",           "required": true,  "example": true,                        "note": "true nếu conflict_localizations rỗng sau loop. false = genuine disagreement." },
-        "validated_claim_ids":    { "type": "list[string]",   "required": true,  "example": ["c_001", "c_002"],          "note": "FK → Claim.claim_id. credibility_score > 0. Sorted descending by score." },
-        "suppressed_claim_ids":   { "type": "list[string]",   "required": true,  "example": ["c_003"],                   "note": "FK → Claim.claim_id. credibility_score ≤ 0." },
-        "conflict_localizations": { "type": "list[string]",   "required": true,  "example": [],                          "note": "FK → ConflictLocalization.localization_id. [] khi resolved=true. Còn lại khi genuine disagreement." },
-        "credibility_scores":     { "type": "object",         "required": true,  "example": {"c_001": 1.76, "c_003": -2.56}, "note": "Map claim_id → credibility_score từ arbitration lần cuối. Có thể âm." },
-        "final_answer":           { "type": ["string", null], "required": true,  "example": null,                        "note": "null cho đến khi Phase 7 populate." }
+        "loop_id": {
+          "type": "string",
+          "required": true,
+          "example": "loop001"
+        },
+        "query_id": {
+          "type": "string",
+          "required": true,
+          "example": "q_001",
+          "note": "FK → Query.query_id"
+        },
+        "iterations_run": {
+          "type": "int",
+          "required": true,
+          "example": 2,
+          "note": "Range [0, 3]. MAX_ITER = 3 hardcoded."
+        },
+        "stop_reason": {
+          "type": "string",
+          "required": true,
+          "example": "intensity_below_threshold",
+          "note": "Enum: loop_stop_reasons"
+        },
+        "resolved": {
+          "type": "bool",
+          "required": true,
+          "example": true,
+          "note": "true nếu conflict_localizations rỗng sau loop. false = genuine disagreement."
+        },
+        "validated_claim_ids": {
+          "type": "list[string]",
+          "required": true,
+          "example": [
+            "c_001",
+            "c_002"
+          ],
+          "note": "FK → Claim.claim_id. credibility_score > 0. Sorted descending by score."
+        },
+        "suppressed_claim_ids": {
+          "type": "list[string]",
+          "required": true,
+          "example": [
+            "c_003"
+          ],
+          "note": "FK → Claim.claim_id. credibility_score ≤ 0."
+        },
+        "conflict_localizations": {
+          "type": "list[string]",
+          "required": true,
+          "example": [],
+          "note": "FK → ConflictLocalization.localization_id. [] khi resolved=true. Còn lại khi genuine disagreement."
+        },
+        "credibility_scores": {
+          "type": "object",
+          "required": true,
+          "example": {
+            "c_001": 1.76,
+            "c_003": -2.56
+          },
+          "note": "Map claim_id → credibility_score từ arbitration lần cuối. Có thể âm."
+        },
+        "final_answer": {
+          "type": [
+            "string",
+            null
+          ],
+          "required": true,
+          "example": null,
+          "note": "null cho đến khi Phase 7 populate."
+        }
       },
       "constraints": [
         "iterations_run ∈ [0, 3]",
@@ -206,43 +566,72 @@
         "condition_C": "no new evidence from retrieve → break"
       }
     },
-
     "FinalAnswer": {
       "description": "Output Phase 7 Generation. LLM nhận validated claims (sorted by credibility) + conflict_summary nếu unresolved. Populate vào LoopResult.final_answer.",
       "owner_module": "answer/generator.py",
       "fields": {
-        "query_id":             { "type": "string",         "required": true,  "example": "q_001",                "note": "FK → Query.query_id" },
-        "answer":               { "type": "string",         "required": true,  "example": "Chiến dịch Điện Biên Phủ kết thúc năm 1954..." },
-        "answer_confidence":    { "type": "float",          "required": true,  "example": 0.88 },
-        "supporting_claim_ids": { "type": "list[string]",   "required": true,  "example": ["c_001", "c_002"],     "note": "FK → Claim.claim_id. Subset của validated_claim_ids." },
-        "conflict_summary":     { "type": ["string", null], "required": true,  "example": "Hai nguồn mâu thuẫn về [temporal]: 1954 (credibility=1.76) vs 1953 (credibility=-2.56). Không resolve sau 3 iterations.", "note": "null nếu resolved=true." },
-        "limitations":          { "type": "list[string]",   "required": true,  "example": [] }
+        "query_id": {
+          "type": "string",
+          "required": true,
+          "example": "q_001",
+          "note": "FK → Query.query_id"
+        },
+        "answer": {
+          "type": "string",
+          "required": true,
+          "example": "Chiến dịch Điện Biên Phủ kết thúc năm 1954..."
+        },
+        "answer_confidence": {
+          "type": "float",
+          "required": true,
+          "example": 0.88
+        },
+        "supporting_claim_ids": {
+          "type": "list[string]",
+          "required": true,
+          "example": [
+            "c_001",
+            "c_002"
+          ],
+          "note": "FK → Claim.claim_id. Subset của validated_claim_ids."
+        },
+        "conflict_summary": {
+          "type": [
+            "string",
+            null
+          ],
+          "required": true,
+          "example": "Hai nguồn mâu thuẫn về [temporal]: 1954 (credibility=1.76) vs 1953 (credibility=-2.56). Không resolve sau 3 iterations.",
+          "note": "null nếu resolved=true."
+        },
+        "limitations": {
+          "type": "list[string]",
+          "required": true,
+          "example": []
+        }
       }
     }
-
   },
-
   "foreign_keys": {
-    "Claim.doc_id":                                   "→ Document.doc_id",
-    "Claim.source_id":                                "→ Document.source_id",
-    "ClaimEdge.source_claim_id":                      "→ Claim.claim_id",
-    "ClaimEdge.target_claim_id":                      "→ Claim.claim_id",
-    "FactoidSlots.claim_id":                          "→ Claim.claim_id",
-    "ConflictLocalization.query_id":                  "→ Query.query_id",
-    "ConflictLocalization.claim_i_id":                "→ Claim.claim_id",
-    "ConflictLocalization.claim_j_id":                "→ Claim.claim_id",
-    "LoopResult.query_id":                            "→ Query.query_id",
-    "LoopResult.validated_claim_ids[]":               "→ Claim.claim_id",
-    "LoopResult.suppressed_claim_ids[]":              "→ Claim.claim_id",
-    "LoopResult.conflict_localizations[]":            "→ ConflictLocalization.localization_id",
-    "FinalAnswer.query_id":                           "→ Query.query_id",
-    "FinalAnswer.supporting_claim_ids[]":             "→ Claim.claim_id"
+    "Claim.doc_id": "→ Document.doc_id",
+    "Claim.source_id": "→ Document.source_id",
+    "ClaimEdge.source_claim_id": "→ Claim.claim_id",
+    "ClaimEdge.target_claim_id": "→ Claim.claim_id",
+    "FactoidSlots.claim_id": "→ Claim.claim_id",
+    "ConflictLocalization.query_id": "→ Query.query_id",
+    "ConflictLocalization.claim_i_id": "→ Claim.claim_id",
+    "ConflictLocalization.claim_j_id": "→ Claim.claim_id",
+    "LoopResult.query_id": "→ Query.query_id",
+    "LoopResult.validated_claim_ids[]": "→ Claim.claim_id",
+    "LoopResult.suppressed_claim_ids[]": "→ Claim.claim_id",
+    "LoopResult.conflict_localizations[]": "→ ConflictLocalization.localization_id",
+    "FinalAnswer.query_id": "→ Query.query_id",
+    "FinalAnswer.supporting_claim_ids[]": "→ Claim.claim_id"
   },
-
   "serialization_rules": {
-    "format":       "JSONL — mỗi record một dòng, kết thúc bằng newline",
-    "encoding":     "UTF-8",
-    "null_policy":  "null cho giá trị thiếu. KHÔNG dùng empty string. credibility_score có thể âm.",
+    "format": "JSONL — mỗi record một dòng, kết thúc bằng newline",
+    "encoding": "UTF-8",
+    "null_policy": "null cho giá trị thiếu. KHÔNG dùng empty string. credibility_score có thể âm.",
     "validate_cmd": "python -c \"import json; [json.loads(l) for l in open('file.jsonl')]\""
   }
 }
